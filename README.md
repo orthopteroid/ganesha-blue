@@ -45,7 +45,7 @@ If the solver is run is Callback Mode, the GPU iterates then waits for the host 
 A worked example finds the inflection point of a narrow normal distribution shaped
  curve (centered at 101.10101) to within .01% using less than 70MB gpu memory.
 
-![example1](analysis/plot-example1.png)
+![example1](analysis/example1-plot.png)
 
 When making 10 runs in Iterate Mode the GPU is kept busy and the CPU waits for all work to
  complete. This behaviour can be seen by the long call to cudaSynchronize() at the end of the
