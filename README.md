@@ -1,20 +1,22 @@
-# ganesha_blue
+# ganesha-blue
 Low latency genetic algorithm solver in CUDA/thrust
 
 This is a single-stream templated C++ multi-kernel genetic solver. It uses
  7 kernels per iteration and can run in either Iterate Mode (low latency - no host transfers),
  or Callback Mode (more flexible - user code called each iteration).
 
+## Approach
+
 The solver uses a method known as
  [stochastic remainder selection](https://en.wikipedia.org/wiki/Stochastic_universal_sampling) but
- with code to factor out the 'best mate' to prevent population saturation. Ganesha_blue uses double-buffered populations
+ with code to factor out the 'best mate' to prevent population saturation. Ganesha-blue uses double-buffered populations
  split into 3 segments each (in addition to the solitary 'best mate'
  which I'm not calling a segment) and each segment having different mutation parameters. For each new
  population-slot a mate is taken from the previous' population-at-large. This is an approach similar
  to the one taken in an earlier host-only open-mp-capable solver
  [psychic-sniffle](https://github.com/orthopteroid/psychic-sniffle) which had 6 segments.
  
-Ganesha_blue uses only simple per-segment mutation parameters (called a Breeding Plan)
+Ganesha-blue uses only simple per-segment mutation parameters (called a Breeding Plan)
  to control the breeding process:
  
 * Probability of a single-bit mutation (values are 0...100).
@@ -31,7 +33,22 @@ The default population size is configured at 60k. This was selected on the basis
  
 If the solver is run in Iterate Mode (the default) all kernel calls for all iterations can be queued
  without synchronization from the host CPU. The host then sits back and waits for the GPU to finish
- calculating. This behaviour can be seen by the long call to cudaSynchronize() at the end of the
+ calculating.
+ 
+If the solver is run is Callback Mode, the GPU iterates then waits for the host CPU callback
+ code to determine the termination condition or iterate again. While the callback code is
+ running on the host CPU the GPU is doing nothing. If the callback code read states from the
+ GPU this can cause further data-transfer delays.
+
+## Example
+
+A worked example finds the inflection point of a narrow normal distribution shaped
+ curve (centered at 101.10101) to within .01% using less than 70MB gpu memory.
+
+![example1](analysis/plot-example1.png)
+
+When making 10 runs in Iterate Mode the GPU is kept busy and the CPU waits for all work to
+ complete. This behaviour can be seen by the long call to cudaSynchronize() at the end of the
  call-chart below. 
 
 ![Full timeline - Iterate Mode](analysis/end-to-end-iter.png)
@@ -63,6 +80,8 @@ If the solver is run is Callback Mode, the GPU iterates then waits for the host 
  code to determine the termination condition or iterate again. While the callback code is
  running the GPU is doing nothing - hence the long gaps in the call-chart below. In this mode
  the CPU callback code may also read state from the GPU, causing further delays for data-transfer.
+
+
  Much of this host-to-device communication can be seen on the call-chart between each iteration.
 
 ![Full Timeline - Callback Mode](analysis/end-to-end-check.png)
@@ -92,11 +111,12 @@ In 10 Callback Mode run, most attempts at solving the problem took 2 iterations.
  0.20327,  0.02152,  0.01986,  0.00115, 101.10217, 0.40389, 4
 ```
 
-In the example presented, the solver found the root of a quadratic function (101.10101f) to within .01%
- in 418 usec using less than 70MB gpu memory. In Callback Mode (where host-side convergence tests are
+  Iterations take around 400 usec, but total solver time depends upon the solver mode: either Iterate or
+ Callback, as the latter ties up the GPU waiting for host CPU code to run.
+ In Callback Mode (where host-side convergence tests are
  performed) the solver usually found the answer in 2 iterations but took 25x longer than blindly running
  10 iterations in Iterate Mode. However, if more complex/expensive objective functions were run on the GPU the
- Callback Mode might perform better.
+ Callback Mode might perform better by knowing to perform fewer iterations.
 
 Future research might invistigate if the solver can be usefully multi-streamed, seeing as how the
  breeding process is parameterized over segments of the population. So far, experiments I've run with
