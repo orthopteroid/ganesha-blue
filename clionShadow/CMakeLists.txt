@@ -1,0 +1,8 @@
+cmake_minimum_required(VERSION 3.9)
+project(quadraticNoBuild)
+set(CMAKE_CXX_STANDARD 11)
+if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(CUDA_NVCC_FLAGS "${CUDA_NVCC_FLAGS} -DDEBUG")
+endif()
+add_executable(quadraticNoBuild ../quadratic.cpp)
+target_include_directories(quadraticNoBuild PUBLIC ${CUDA_INCLUDE_DIRS} ${CMAKE_CXX_STANDARD_INCLUDE_DIRECTORIES})
