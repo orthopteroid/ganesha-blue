@@ -6,7 +6,7 @@ This is a templated C++ multi-kernel genetic solver. The solver uses
  default and fastest with no host-device communication between iterations),
  or Callback Mode (requiring host communication so convergence or
  termination conditions can be checked, and so can take much longer). In the
- example presented, the solver found the root of a quadrtic function to within .01%
+ example presented, the solver found the root of a quadratic function to within .01%
  in 418 usec using less than 70MB gpu memory.
      
  There is also a template parameter that allow configuration of the solver's rather limited
