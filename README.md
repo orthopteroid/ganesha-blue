@@ -7,7 +7,7 @@ This is a single-stream templated C++ multi-kernel genetic solver. It uses
 
 ## Approach
 
-The solver uses a method known as
+The solver leverages the GPU's ability to perform parallel-prefix-sum in a method known as
  [stochastic remainder selection](https://en.wikipedia.org/wiki/Stochastic_universal_sampling) but
  with code to factor out the 'best mate' to prevent population saturation. Ganesha-blue uses double-buffered populations
  split into 3 segments each (in addition to the solitary 'best mate'
