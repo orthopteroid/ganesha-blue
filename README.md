@@ -1,25 +1,21 @@
 # ganesha_blue
-Genetic solver in CUDA/thrust
+Low latency genetic algorithm solver in CUDA/thrust
 
-This is a templated C++ multi-kernel genetic solver. The solver uses
- 7 kernels per iteration and can run in either Iterate Mode (the
- default and fastest with no host-device communication between iterations),
- or Callback Mode (requiring host communication so convergence or
- termination conditions can be checked, and so can take much longer). In the
- example presented, the solver found the root of a quadratic function to within .01%
- in 418 usec using less than 70MB gpu memory.
-     
- There is also a template parameter that allow configuration of the solver's rather limited
- breeding process, but I've not yet found any reason yet to change from the defaults.
- This is a serial-solver so all operations occur in a single stream (no parallel kernels).
-  
-The solver uses an approach similar to the one taken in an earlier host-only
- open-mp-capable solver [psychic-sniffle](https://github.com/orthopteroid/psychic-sniffle)
- in that populations are segmented when bred according to different parameter sets but
- selected for breeding across all segments. In psychic-sniffle's case there were 6 segments/groups
- but here in ganesha_blue's case there are only 3 - in addition to the 'best selected'
- which I'm not calling a segment. Ganesha_blue uses the same breeding operator across
- all segments; the only variability are 2 parameters that control the mutation rate:
+This is a single-stream templated C++ multi-kernel genetic solver. It uses
+ 7 kernels per iteration and can run in either Iterate Mode (low latency - no host transfers),
+ or Callback Mode (more flexible - user code called each iteration).
+
+The solver uses a method known as
+ [stochastic remainder selection](https://en.wikipedia.org/wiki/Stochastic_universal_sampling) but
+ with code to factor out the 'best mate' to prevent population saturation. Ganesha_blue uses double-buffered populations
+ split into 3 segments each (in addition to the solitary 'best mate'
+ which I'm not calling a segment) and each segment having different mutation parameters. For each new
+ population-slot a mate is taken from the previous' population-at-large. This is an approach similar
+ to the one taken in an earlier host-only open-mp-capable solver
+ [psychic-sniffle](https://github.com/orthopteroid/psychic-sniffle) which had 6 segments.
+ 
+Ganesha_blue uses only simple per-segment mutation parameters (called a Breeding Plan)
+ to control the breeding process:
  
 * Probability of a single-bit mutation (values are 0...100).
 * Number of trials for single-bit mutations (values are 0...N), where N is the number
@@ -28,20 +24,22 @@ The solver uses an approach similar to the one taken in an earlier host-only
 The default breeding plan uses 5%, 10% and 50% for the single-bit mutation probabilities
  and 1, 1, and 2 for the number of trials in each of the groups. These values were picked
  basically at random, but with a mindset to provide some sort of asymptotic behaviour in
- the 3rd segment of the population.
+ the 3rd segment of the population (ie high likelyhood of mutation).
 
-Additionally, the default population size is configured at a default of 60k. It was limited 
- in the implmentation to be no more than 65535 members as a bandwidth tradeoff.
+The default population size is configured at 60k. This was selected on the basis of a
+ bandwidth tradeoff and can easily be changed to accommodate 2^32 members.
  
-If the solver is run in Iterate Mode (the default) all kernel calls all proceed without
- host interaction. Once the solver starts all kernel calls are queued and the host
-  then sits back and waits for the gpu to finish calculating. Evidence of this can
-  be seen by the long call to cudaSynchronize() at the end of the call-chart below. 
+If the solver is run in Iterate Mode (the default) all kernel calls for all iterations can be queued
+ without synchronization from the host CPU. The host then sits back and waits for the GPU to finish
+ calculating. This behaviour can be seen by the long call to cudaSynchronize() at the end of the
+ call-chart below. 
 
 ![Full timeline - Iterate Mode](analysis/end-to-end-iter.png)
 
-In Iterate Mode (set to 10 iterations) for each iteration the results show the converged
- value, the average time per iteration and the number of iterations (ie 10).
+In Iterate Mode the solver ran 10 iterations 10 times. The results of each run are
+ printed on lines below and show: the converged
+ value, the average time per iteration and the number of iterations (set to 10 in the
+ Breeding Plan).
  
  ```
  101.09619, 0.39216, 10
@@ -56,29 +54,29 @@ In Iterate Mode (set to 10 iterations) for each iteration the results show the c
  101.10901, 0.39395, 10
  ```
 
-From looking at the call-chart for a single iteration in this mode you can see the
- total iteration time is around 418 usec.
+In this mode, the call-chart for a single iteration shows a total iteration
+ time is around 418 usec.
  
 ![Single Iteration - Iterate Mode](analysis/one-iteration-iter.png)
 
-If the solver is run is Check Mode a single iteration is run and then caller (host)
- code is run to determine termination conditions. Doing this typically will involve
- copying some state from the device back to the host (the method solver.CopyToHost can be used
- for this) and telling the solver when to quit. When run this way the call-chart
- shows many host-to-device copies each iteration.
+If the solver is run is Callback Mode, the GPu iterations can be seen to be quite spread apart
+ due to the GPu waiting to be told to launch the next iteration by the host CPU. In this mode
+ the CPU callback code may also read state from the GPU, causing further data-transfer delays.
+ Much of this host-to-device communication can be seen on the call-chart between each iteration.
 
-![Full Timeline - Check Mode](analysis/end-to-end-check.png)
+![Full Timeline - Callback Mode](analysis/end-to-end-check.png)
 
-Zooming in on the call-chart for 1 iteration in this mode, one can kind-of spot the start of
- an iteration (where the 2 host-to-device copies occur). However, the attached snap
+Zooming in on this Callback Mode call-chart for 1 iteration, the start of
+ an iteration can be seen (where the 2 host-to-device copies occur). However, the attached snap
  may not be ideal measure performance because the kernel launches at the start of the
  iteration appear more spread-out than the launches at the start of the next
- iteration (is the device warming-up?).
+ iteration, perhaps a result of a device calculation warm-up.
 
 ![Single Iteration - Check Mode](analysis/one-iteration-check.png)
 
-In Callback/Check Mode (ie check stopping condition) most attempts at solving the problem took 2
- iterations. The first 2 or 3 values in each line is printing a % convergence value the latter 3
+In Callback Mode most attempts at solving the problem took 2 iterations - 10 runs were made
+ as in the other mode. The first 2 or 3 values in each run prints a % convergence value
+ while the latter 3
  values show the converged value, the average time per iteration and the number of iterations.  
 
 ```
@@ -93,3 +91,15 @@ In Callback/Check Mode (ie check stopping condition) most attempts at solving th
  0.05838,  0.00560, 101.10667, 0.30302, 2
  0.20327,  0.02152,  0.01986,  0.00115, 101.10217, 0.40389, 4
 ```
+
+In the example presented, the solver found the root of a quadratic function to within .01%
+ in 418 usec using less than 70MB gpu memory. In Callback Mode (where host-side convergence tests are
+ performed) the solver usually found the answer in 2 iterations but took 25x longer than blindly running
+ 10 iterations in Iterate Mode. However, if more complex/expensive objective functions were run on the GPu the
+ Callback Mode might perform better.
+
+Future research might invistigate if the solver can be usefully multi-streamed, seeing as how the
+ breeding process is parameterized over segments of the population. So far, experiments I've run with
+ the current breeding operator presently show a much higher kernel
+ launch latency than execution time. Other factors to consider would be memory access patterns
+ of the current breeding operator and if a different launch method or operator would be effective.
