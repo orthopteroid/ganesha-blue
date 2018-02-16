@@ -36,9 +36,9 @@ If the solver is run in Iterate Mode (the default) all kernel calls for all iter
 
 ![Full timeline - Iterate Mode](analysis/end-to-end-iter.png)
 
-In Iterate Mode the solver ran 10 iterations 10 times. The results of each run are
- printed on lines below and show: the converged
- value, the average time per iteration and the number of iterations (set to 10 in the
+10 runs of Iterate Mode showed tolerable convergence for the example problem. The results of each run are
+ printed on lines below and show the converged
+ value, the average time per iteration in msec and the number of iterations (set to 10 in the
  Breeding Plan).
  
  ```
@@ -59,9 +59,10 @@ In this mode, the call-chart for a single iteration shows a total iteration
  
 ![Single Iteration - Iterate Mode](analysis/one-iteration-iter.png)
 
-If the solver is run is Callback Mode, the GPu iterations can be seen to be quite spread apart
- due to the GPu waiting to be told to launch the next iteration by the host CPU. In this mode
- the CPU callback code may also read state from the GPU, causing further data-transfer delays.
+If the solver is run is Callback Mode, the GPU iterates then waits for the host CPU callback
+ code to determine the termination condition or iterate again. While the callback code is
+ running the GPU is doing nothing - hence the long gaps in the call-chart below. In this mode
+ the CPU callback code may also read state from the GPU, causing further delays for data-transfer.
  Much of this host-to-device communication can be seen on the call-chart between each iteration.
 
 ![Full Timeline - Callback Mode](analysis/end-to-end-check.png)
@@ -70,14 +71,13 @@ Zooming in on this Callback Mode call-chart for 1 iteration, the start of
  an iteration can be seen (where the 2 host-to-device copies occur). However, the attached snap
  may not be ideal measure performance because the kernel launches at the start of the
  iteration appear more spread-out than the launches at the start of the next
- iteration, perhaps a result of a device calculation warm-up.
+ iteration, perhaps a result of a device calculation warmup.
 
 ![Single Iteration - Check Mode](analysis/one-iteration-check.png)
 
-In Callback Mode most attempts at solving the problem took 2 iterations - 10 runs were made
- as in the other mode. The first 2 or 3 values in each run prints a % convergence value
- while the latter 3
- values show the converged value, the average time per iteration and the number of iterations.  
+In 10 Callback Mode run, most attempts at solving the problem took 2 iterations. The first
+ 2 or 3 values in each run prints a % convergence value while the latter 3
+ values show the converged value, the average time per iteration in msec and the number of iterations.  
 
 ```
  0.02083,  0.00338, 101.10443, 0.32810, 2
@@ -92,14 +92,14 @@ In Callback Mode most attempts at solving the problem took 2 iterations - 10 run
  0.20327,  0.02152,  0.01986,  0.00115, 101.10217, 0.40389, 4
 ```
 
-In the example presented, the solver found the root of a quadratic function to within .01%
+In the example presented, the solver found the root of a quadratic function (101.10101f) to within .01%
  in 418 usec using less than 70MB gpu memory. In Callback Mode (where host-side convergence tests are
  performed) the solver usually found the answer in 2 iterations but took 25x longer than blindly running
- 10 iterations in Iterate Mode. However, if more complex/expensive objective functions were run on the GPu the
+ 10 iterations in Iterate Mode. However, if more complex/expensive objective functions were run on the GPU the
  Callback Mode might perform better.
 
 Future research might invistigate if the solver can be usefully multi-streamed, seeing as how the
  breeding process is parameterized over segments of the population. So far, experiments I've run with
  the current breeding operator presently show a much higher kernel
- launch latency than execution time. Other factors to consider would be memory access patterns
- of the current breeding operator and if a different launch method or operator would be effective.
+ launch latency than execution time when multi-streaming. Other factors to consider would be memory access patterns
+ of the current breeding operator and/or if a different launch method or operator would be effective.
